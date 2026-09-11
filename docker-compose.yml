@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    container_name: ops-erp-backend
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_ENV: production
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-me}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///instance/erp.db}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    volumes:
+      - erp-data:/app/instance
+
+volumes:
+  erp-data:
