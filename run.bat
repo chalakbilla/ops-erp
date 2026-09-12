@@ -41,7 +41,7 @@ where npm >nul 2>nul
 if errorlevel 1 goto :no_node
 
 node --version
-npm --version
+call npm --version
 
 echo.
 echo [step 4/6] Checking that the Docker engine is actually running...
@@ -154,5 +154,5 @@ goto :fail
 echo.
 echo [setup] Setup did not complete. Read the [ERROR] message above.
 echo         This window will stay open -- press any key to close it.
-pause >nul
+pause
 exit /b 1
