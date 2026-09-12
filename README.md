@@ -1,4 +1,5 @@
-# Meridian ERP — Mini Operations ERP
+# Meridian ERP — Mini Operations ERP  
+ ![Meridian](Meridian.png)
 
 A small full-stack Operations ERP covering:
 **Inventory → Work Order → Stock Check → Internal Transfer / Shortage → Customer Reservation**
