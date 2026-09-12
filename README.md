@@ -229,7 +229,7 @@ just re-run `docker compose up --build -d backend` after pulling the fix;
 there's no need to delete the existing `erp-data` volume.
 
 ## Git history
-![Git History](image.png)
+![Git History](image.png)  
 This repository is committed incrementally (auth → inventory → work orders →
 transfers → orders → frontend → docs) rather than as a single commit — see
 `git log` for the development history.
