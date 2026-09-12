@@ -1,72 +1,108 @@
 @echo off
-REM Mini Operations ERP -- one-command setup + launch (Windows)
+REM Meridian ERP -- one-command setup + launch (Windows)
 REM
 REM What this does:
-REM   1. Checks for python and node/npm, failing with a clear message if missing.
-REM   2. Creates/activates a Python virtualenv for the backend and installs
-REM      requirements.txt.
-REM   3. Seeds the database with demo users/inventory (safe to re-run).
-REM   4. Installs frontend npm dependencies (only if node_modules is missing).
-REM   5. Opens the Flask backend (port 5000) and the Vite dev server (port 5173)
-REM      each in their own window.
+REM   1. Checks for Docker (+ Compose) and Node/npm, with a clear message and
+REM      a PAUSE if anything is missing, so this window never closes before
+REM      you can read what went wrong.
+REM   2. Builds and starts the Flask backend in Docker (this installs every
+REM      Python dependency INSIDE the container -- nothing to install on the
+REM      host for the backend).
+REM   3. Installs frontend npm dependencies (only if node_modules is missing).
+REM   4. Runs the Vite dev server in this window.
+REM
+REM Stopping: press Ctrl+C to stop the frontend. The backend container keeps
+REM running in the background afterwards -- stop it with "docker compose down"
+REM from this folder when you're done.
 
 setlocal enabledelayedexpansion
 
 set "ROOT_DIR=%~dp0"
-set "BACKEND_DIR=%ROOT_DIR%backend"
 set "FRONTEND_DIR=%ROOT_DIR%frontend"
 
+echo ============================================
+echo  Meridian ERP - Setup and Launch
+echo ============================================
+echo.
 echo [setup] Checking dependencies...
+echo.
 
-where python >nul 2>nul
+where docker >nul 2>nul
 if errorlevel 1 (
-  echo [error] python was not found on PATH. Install Python 3.10+ and re-run this script.
-  exit /b 1
+  echo [error] Docker was not found on PATH.
+  echo         Install Docker Desktop: https://www.docker.com/products/docker-desktop
+  echo         Then re-run this script.
+  goto :fail
+)
+
+docker compose version >nul 2>nul
+if errorlevel 1 (
+  echo [error] "docker compose" is not available.
+  echo         Update Docker Desktop to a recent version ^(it bundles Compose v2^).
+  goto :fail
 )
 
 where node >nul 2>nul
 if errorlevel 1 (
-  echo [error] node was not found on PATH. Install Node.js 18+ and re-run this script.
-  exit /b 1
+  echo [error] Node.js was not found on PATH.
+  echo         Install Node.js 18+: https://nodejs.org
+  echo         Then re-run this script.
+  goto :fail
 )
 
 where npm >nul 2>nul
 if errorlevel 1 (
-  echo [error] npm was not found on PATH. Install Node.js 18+ and re-run this script.
-  exit /b 1
+  echo [error] npm was not found on PATH. Reinstall Node.js and re-run this script.
+  goto :fail
 )
 
-python --version
+docker --version
 node --version
 npm --version
+echo.
 
-REM ---- Backend virtualenv + dependencies ----
-cd /d "%BACKEND_DIR%"
-
-if not exist "venv" (
-  echo [setup] Creating Python virtual environment...
-  python -m venv venv
+echo [setup] Checking that Docker Desktop is actually running...
+docker info >nul 2>nul
+if errorlevel 1 (
+  echo [error] Docker Desktop does not seem to be running.
+  echo         Start Docker Desktop, wait for it to finish starting, then re-run this script.
+  goto :fail
 )
+echo [setup] Docker is running.
+echo.
 
-call venv\Scripts\activate.bat
+cd /d "%ROOT_DIR%"
 
-echo [setup] Checking backend dependencies...
-python -m pip install --quiet --upgrade pip
-pip install --quiet -r requirements.txt
-
-if not exist ".env" (
-  if exist ".env.example" (
-    copy /y ".env.example" ".env" >nul
+if not exist "backend\.env" (
+  if exist "backend\.env.example" (
+    copy /y "backend\.env.example" "backend\.env" >nul
     echo [setup] Created backend\.env from .env.example
   )
 )
 
-echo [setup] Seeding database (safe to re-run)...
-python seed.py
+echo [setup] Building and starting the backend in Docker...
+echo         (this installs all backend dependencies inside the container)
+docker compose up --build -d backend
+if errorlevel 1 (
+  echo.
+  echo [error] Failed to build/start the backend container. See the output above.
+  goto :fail
+)
 
-call venv\Scripts\deactivate.bat
+echo.
+echo [setup] Backend container is up. Waiting a few seconds for Flask to come online...
+timeout /t 5 /nobreak >nul
 
-REM ---- Frontend dependencies ----
+curl -s -o nul -w "" http://localhost:5000/api/health >nul 2>nul
+if errorlevel 1 (
+  echo [warn] Could not confirm the backend is responding yet on http://localhost:5000
+  echo        It may still be starting -- check "docker compose logs backend" if the
+  echo        frontend can't reach it in a moment.
+) else (
+  echo [setup] Backend is responding on http://localhost:5000
+)
+echo.
+
 cd /d "%FRONTEND_DIR%"
 
 if not exist ".env" (
@@ -79,18 +115,41 @@ if not exist ".env" (
 if not exist "node_modules" (
   echo [setup] Installing frontend dependencies ^(npm install^)...
   call npm install
+  if errorlevel 1 (
+    echo.
+    echo [error] npm install failed. See the output above.
+    goto :fail
+  )
 ) else (
   echo [setup] Frontend dependencies already installed, skipping npm install.
 )
 
-REM ---- Run both services in separate windows ----
-echo [setup] Starting backend on http://localhost:5000 ...
-start "Ops ERP - Backend" cmd /k "cd /d "%BACKEND_DIR%" && call venv\Scripts\activate.bat && set FLASK_ENV=development && python wsgi.py"
+echo.
+echo ============================================
+echo  Backend:  http://localhost:5000   ^(Docker, running in background^)
+echo  Frontend: http://localhost:5173   ^(starting now in this window^)
+echo.
+echo  Demo logins:
+echo    admin / Admin@123
+echo    ops   / Ops@123
+echo    sales / Sales@123
+echo.
+echo  Press Ctrl+C to stop the frontend dev server.
+echo  Run "docker compose down" from this folder to stop the backend.
+echo ============================================
+echo.
 
-echo [setup] Starting frontend on http://localhost:5173 ...
-start "Ops ERP - Frontend" cmd /k "cd /d "%FRONTEND_DIR%" && npm run dev"
+call npm run dev
 
-echo [setup] Both services are starting in separate windows.
-echo [setup] Demo logins: admin/Admin@123, ops/Ops@123, sales/Sales@123
-
+echo.
+echo [setup] Frontend dev server stopped.
+pause
 endlocal
+exit /b 0
+
+:fail
+echo.
+echo [setup] Setup did not complete -- see the message above.
+pause
+endlocal
+exit /b 1

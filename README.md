@@ -48,8 +48,10 @@ ops-erp/
 
 ## Project setup
 
-You need **Python 3.10+** and **Node.js 18+** installed. Everything else is
-handled by the launcher scripts below.
+You need **Docker Desktop** (or `docker` + the Compose plugin) and
+**Node.js 18+** installed. Python is only needed on your host if you want to
+run the backend outside Docker or run the test suite directly — the launcher
+scripts below install and run the backend entirely inside its container.
 
 ### Quick start (recommended)
 
@@ -63,12 +65,23 @@ From the repo root:
 run.bat
 ```
 
-This checks for Python/Node, creates a virtualenv, installs backend and
-frontend dependencies (only if missing), seeds the database with demo data,
-and starts:
+This checks for Docker and Node, builds and starts the **backend in Docker**
+(installing every Python dependency inside the container — nothing to
+install on the host for the backend), installs frontend npm dependencies
+(only if missing), and starts the Vite dev server in the current
+terminal/window:
 
-- Backend on **http://localhost:5000**
-- Frontend on **http://localhost:5173**
+- Backend on **http://localhost:5000** (Docker container, keeps running in
+  the background)
+- Frontend on **http://localhost:5173** (runs in the foreground of this
+  window — press `Ctrl+C` to stop it)
+
+To stop the backend afterwards: `docker compose down` from the repo root.
+
+> **Windows note:** if `run.bat` closes immediately, it's almost always
+> because Docker Desktop isn't installed or isn't running yet — the script
+> checks for both and pauses on failure so you can read the message. Start
+> Docker Desktop, wait for it to say "running", then re-run `run.bat`.
 
 Demo logins (also printed by the script):
 
@@ -81,7 +94,21 @@ Demo logins (also printed by the script):
 ### Manual setup
 
 ```bash
-# Backend
+# Backend — via Docker (recommended)
+cd ops-erp
+docker compose up --build -d backend    # http://localhost:5000
+
+# Frontend (separate terminal)
+cd frontend
+cp .env.example .env
+npm install
+npm run dev                             # http://localhost:5173
+```
+
+If you'd rather run the backend without Docker (e.g. for debugging with a
+debugger attached), you can still do it the traditional way:
+
+```bash
 cd backend
 python3 -m venv venv
 source venv/bin/activate          # venv\Scripts\activate.bat on Windows
@@ -89,15 +116,9 @@ pip install -r requirements.txt
 cp .env.example .env
 python seed.py                    # creates demo users + inventory
 python wsgi.py                    # http://localhost:5000
-
-# Frontend (separate terminal)
-cd frontend
-cp .env.example .env
-npm install
-npm run dev                       # http://localhost:5173
 ```
 
-### Docker (backend only)
+### Docker (backend)
 
 ```bash
 cd ops-erp

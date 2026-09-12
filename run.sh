@@ -1,27 +1,36 @@
 #!/usr/bin/env bash
-# Mini Operations ERP — one-command setup + launch (Linux / macOS)
+# Meridian ERP — one-command setup + launch (Linux / macOS)
 #
 # What this does:
-#   1. Checks for python3 and node/npm, failing with a clear message if missing.
-#   2. Creates/activates a Python virtualenv for the backend and installs
-#      requirements.txt (only if the venv doesn't already have them).
-#   3. Seeds the database with demo users/inventory (safe to re-run).
-#   4. Installs frontend npm dependencies (only if node_modules is missing/stale).
-#   5. Starts the Flask backend (port 5000) and the Vite dev server (port 5173),
-#      and stops both cleanly on Ctrl+C.
+#   1. Checks for Docker (+ Compose) and node/npm, failing with a clear
+#      message if anything is missing.
+#   2. Builds and starts the Flask backend in Docker (this installs every
+#      Python dependency INSIDE the container — nothing to install on the
+#      host for the backend).
+#   3. Installs frontend npm dependencies (only if node_modules is missing).
+#   4. Runs the Vite dev server in this terminal.
+#
+# Stopping: Ctrl+C stops the frontend. The backend container keeps running
+# in the background afterwards — stop it with `docker compose down`.
 
-set -euo pipefail
+set -uo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 
 info()  { printf '\033[1;34m[setup]\033[0m %s\n' "$1"; }
+warn()  { printf '\033[1;33m[warn]\033[0m %s\n' "$1"; }
 error() { printf '\033[1;31m[error]\033[0m %s\n' "$1" >&2; }
 
 # ---- 1. Check dependencies -------------------------------------------------
-if ! command -v python3 >/dev/null 2>&1; then
-  error "python3 was not found. Install Python 3.10+ and re-run this script."
+if ! command -v docker >/dev/null 2>&1; then
+  error "Docker was not found. Install Docker Desktop (or docker-ce) and re-run this script."
+  error "https://www.docker.com/products/docker-desktop"
+  exit 1
+fi
+
+if ! docker compose version >/dev/null 2>&1; then
+  error '"docker compose" is not available. Update Docker to a version that includes the Compose plugin.'
   exit 1
 fi
 
@@ -30,32 +39,39 @@ if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-info "python3: $(python3 --version)"
+info "docker:  $(docker --version)"
 info "node:    $(node --version)"
 info "npm:     $(npm --version)"
 
-# ---- 2. Backend virtualenv + dependencies ----------------------------------
-cd "$BACKEND_DIR"
-
-if [ ! -d "venv" ]; then
-  info "Creating Python virtual environment..."
-  python3 -m venv venv
+if ! docker info >/dev/null 2>&1; then
+  error "Docker daemon does not seem to be running. Start Docker and re-run this script."
+  exit 1
 fi
+info "Docker is running."
 
-# shellcheck disable=SC1091
-source venv/bin/activate
+# ---- 2. Backend: build + run in Docker -------------------------------------
+cd "$ROOT_DIR"
 
-info "Checking backend dependencies..."
-pip install --quiet --upgrade pip
-pip install --quiet -r requirements.txt
-
-if [ ! -f ".env" ] && [ -f ".env.example" ]; then
-  cp .env.example .env
+if [ ! -f "backend/.env" ] && [ -f "backend/.env.example" ]; then
+  cp backend/.env.example backend/.env
   info "Created backend/.env from .env.example"
 fi
 
-info "Seeding database (safe to re-run)..."
-python seed.py
+info "Building and starting the backend in Docker..."
+info "(this installs all backend dependencies inside the container)"
+if ! docker compose up --build -d backend; then
+  error "Failed to build/start the backend container. See the output above."
+  exit 1
+fi
+
+info "Backend container is up. Waiting a few seconds for Flask to come online..."
+sleep 5
+if curl -s -o /dev/null http://localhost:5000/api/health; then
+  info "Backend is responding on http://localhost:5000"
+else
+  warn "Could not confirm the backend is responding yet on http://localhost:5000"
+  warn 'It may still be starting — check "docker compose logs backend" if needed.'
+fi
 
 # ---- 3. Frontend dependencies -----------------------------------------------
 cd "$FRONTEND_DIR"
@@ -72,27 +88,17 @@ else
   info "Frontend dependencies already installed, skipping npm install."
 fi
 
-# ---- 4. Run both services ---------------------------------------------------
-cleanup() {
-  info "Stopping services..."
-  [ -n "${BACKEND_PID:-}" ] && kill "$BACKEND_PID" 2>/dev/null || true
-  [ -n "${FRONTEND_PID:-}" ] && kill "$FRONTEND_PID" 2>/dev/null || true
-}
-trap cleanup EXIT INT TERM
+# ---- 4. Run the frontend dev server ----------------------------------------
+echo
+echo "============================================"
+echo " Backend:  http://localhost:5000  (Docker, running in background)"
+echo " Frontend: http://localhost:5173  (starting now)"
+echo
+echo " Demo logins: admin/Admin@123, ops/Ops@123, sales/Sales@123"
+echo
+echo " Press Ctrl+C to stop the frontend dev server."
+echo " Run 'docker compose down' from this folder to stop the backend."
+echo "============================================"
+echo
 
-info "Starting backend on http://localhost:5000 ..."
-cd "$BACKEND_DIR"
-# shellcheck disable=SC1091
-source venv/bin/activate
-FLASK_ENV=development python wsgi.py &
-BACKEND_PID=$!
-
-info "Starting frontend on http://localhost:5173 ..."
-cd "$FRONTEND_DIR"
-npm run dev &
-FRONTEND_PID=$!
-
-info "Both services are starting. Press Ctrl+C to stop."
-info "Demo logins: admin/Admin@123, ops/Ops@123, sales/Sales@123"
-
-wait "$BACKEND_PID" "$FRONTEND_PID"
+npm run dev
