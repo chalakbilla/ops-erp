@@ -201,6 +201,33 @@ This runs the 5 mandatory tests plus one extra concurrency test:
   available — only one can succeed, enforced the same way.
 - **Order cancellation** releases the reservation back to available stock.
 
+## Troubleshooting
+
+**`run.bat` seems to stop right after printing the npm version.**
+Already fixed in this repo (a bare `npm --version` without `call` was
+silently ending the parent script — a classic Windows batch gotcha, since
+`npm` is `npm.cmd`, itself a batch file). If you ever add more npm calls to
+the script yourself, always use `call npm ...`.
+
+**`docker info` fails with `failed to connect to the docker API at
+npipe:////./pipe/dockerDesktopLinuxEngine`.**
+Docker Desktop isn't running. The CLI (`docker.exe`) can be installed and
+working fine while the actual engine is closed — open Docker Desktop, wait
+until it reports "running", then re-run `run.bat`/`run.sh`.
+
+**Frontend shows "Failed to fetch" on login, and `docker ps -a` shows the
+backend container `Exited`.**
+Check `docker compose logs backend`. If you see
+`sqlite3.OperationalError: unable to open database file`, this was a bug
+already fixed in this repo: the backend's Docker volume can come up as an
+empty directory on first run (a known quirk with BuildKit-built images not
+always populating a fresh named volume from the image), so the `instance`
+directory SQLite needs didn't exist yet. The fix — recreating that directory
+every container start, not just at build time — is already in
+`backend/Dockerfile`. If you're hitting this on an older copy of the repo,
+just re-run `docker compose up --build -d backend` after pulling the fix;
+there's no need to delete the existing `erp-data` volume.
+
 ## Git history
 
 This repository is committed incrementally (auth → inventory → work orders →

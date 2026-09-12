@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   backend:
     build: ./backend
@@ -10,7 +8,9 @@ services:
       FLASK_ENV: production
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-me}
-      DATABASE_URL: ${DATABASE_URL:-sqlite:///instance/erp.db}
+      # Absolute path (note the 4th slash) so it never depends on the
+      # container's working directory at the moment SQLite opens the file.
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/instance/erp.db}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
     volumes:
       - erp-data:/app/instance
